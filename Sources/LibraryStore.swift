@@ -169,8 +169,12 @@ enum Keychain {
 @MainActor
 final class SettingsStore: ObservableObject {
     @Published var config: LLMConfiguration
-    @AppStorage("readerFontSize") var fontSize = 19.0
+    @Published var fontSize: Double {
+        didSet { UserDefaults.standard.set(fontSize, forKey: "readerFontSize") }
+    }
     init() {
+        let storedSize = UserDefaults.standard.double(forKey: "readerFontSize")
+        fontSize = storedSize == 0 ? 19 : min(30, max(14, storedSize))
         config = UserDefaults.standard.data(forKey: "llmConfiguration")
             .flatMap { try? JSONDecoder().decode(LLMConfiguration.self, from: $0) } ?? LLMConfiguration()
         config.apiKey = Keychain.read()

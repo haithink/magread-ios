@@ -24,7 +24,7 @@ struct SettingsView: View {
                 }
                 Text("词表由模型结合语境筛选，包含熟词僻义和短语；个人生词本中的原词也会展示。")
                     .font(.caption).foregroundStyle(.secondary)
-                Slider(value: settings.$fontSize, in: 14...30, step: 1) { Text("正文字号") }
+                Slider(value: $settings.fontSize, in: 14...30, step: 1) { Text("正文字号") }
                 Text("正文字号：\(Int(settings.fontSize))").font(.caption).foregroundStyle(.secondary)
             }
             Section {

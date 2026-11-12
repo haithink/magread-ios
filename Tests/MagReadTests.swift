@@ -3,6 +3,11 @@ import ZIPFoundation
 @testable import MagRead
 
 final class MagReadTests: XCTestCase {
+    func testAppBundlesThirdPartyNotices() {
+        let appBundle = Bundle(for: LibraryStore.self)
+        XCTAssertNotNil(appBundle.url(forResource: "ThirdPartyNotices", withExtension: "txt"))
+    }
+
     func testEndpoints() throws {
         var config = LLMConfiguration()
         XCTAssertEqual(try config.endpoint().absoluteString, "https://api.deepseek.com/v1/chat/completions")

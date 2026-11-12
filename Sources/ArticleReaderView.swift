@@ -96,13 +96,20 @@ struct ArticleReaderView: View {
                                          initialPrompt: "请翻译并讲解这一段的句子结构、语法和难点。按句解释，使用列表，不使用空格排列成分。")
                     case .chat:
                         ConversationView(book: book, articleID: article.id,
-                                         context: "标题：\(article.title)\n" + article.paragraphs.joined(separator: "\n").prefixText(16000), title: "文章问答")
+                                         context: discussionContext, title: "文章问答")
                     case .wordbook: WordbookView()
                     }
                 }
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { sheet = nil } } }
             }
         }
+    }
+
+    private var discussionContext: String {
+        let index = min(max(0, visibleParagraph ?? 0), max(0, article.paragraphs.count - 1))
+        let nearby = article.paragraphs[max(0, index - 1)...min(article.paragraphs.count - 1, index + 1)].joined(separator: "\n")
+        return "标题：\(article.title)\n当前阅读位置：第 \(index + 1) 段，附近原文：\n\(nearby.prefixText(8000))\n文章开头（可能截取）：\n"
+            + article.paragraphs.joined(separator: "\n").prefixText(7000)
     }
 
     private var searchBar: some View {

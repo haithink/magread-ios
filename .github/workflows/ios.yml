@@ -21,6 +21,7 @@ jobs:
           xcodebuild -version
       - name: Generate project
         run: |
+          echo "::add-matcher::.github/swift-problem-matcher.json"
           brew install xcodegen
           xcodegen generate
       - name: Resolve packages
