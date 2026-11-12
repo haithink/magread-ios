@@ -3,13 +3,30 @@ import XCTest
 
 final class LLMConfigurationImportTests: XCTestCase {
     func testCCSwitchEnvironmentAndDefaultModelFallback() throws {
-        let text = #"{"env":{"ANTHROPIC_BASE_URL":"https://gateway.example/anthropic","ANTHROPIC_AUTH_TOKEN":"synthetic-token","ANTHROPIC_DEFAULT_SONNET_MODEL":"test-sonnet"}}"#
+        let text = """
+        {
+          "env": {
+            "ANTHROPIC_AUTH_TOKEN": "synthetic-token",
+            "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL": "deepseek-v4-flash",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME": "deepseek-v4-flash",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-flash",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "deepseek-v4-flash",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-flash",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "deepseek-v4-flash",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-flash",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "deepseek-v4-flash",
+            "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4-flash"
+          }
+        }
+        """
         let config = try LLMConfigurationImport.parse(text, level: "六级")
         XCTAssertEqual(config.provider, .anthropic)
-        XCTAssertEqual(config.baseURL, "https://gateway.example/anthropic")
+        XCTAssertEqual(config.baseURL, "https://api.deepseek.com/anthropic")
         XCTAssertEqual(config.apiKey, "synthetic-token")
-        XCTAssertEqual(config.model, "test-sonnet")
+        XCTAssertEqual(config.model, "deepseek-v4-flash")
         XCTAssertEqual(config.level, "六级")
+        XCTAssertEqual(try config.endpoint().absoluteString, "https://api.deepseek.com/anthropic/v1/messages")
     }
 
     func testWrappedProviderAndAnthropicAPIKey() throws {
