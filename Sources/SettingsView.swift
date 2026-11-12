@@ -6,8 +6,15 @@ struct SettingsView: View {
     @State private var draft = LLMConfiguration()
     @State private var notice: String?
     @State private var loaded = false
+    @State private var importingJSON = false
     var body: some View {
         Form {
+            Section {
+                Button { importingJSON = true } label: { Label("粘贴 JSON 导入模型配置", systemImage: "doc.on.clipboard") }
+                    .disabled(job.running)
+                Text("粘贴 CC Switch 等工具的完整配置，自动填写地址、密钥和模型。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("模型服务") {
                 Picker("协议", selection: $draft.provider) {
                     ForEach(Provider.allCases, id: \.rawValue) { Text($0.rawValue).tag($0) }
@@ -39,7 +46,7 @@ struct SettingsView: View {
                 if let notice { Text(notice).font(.callout).textSelection(.enabled) }
             }
             Section("关于") {
-                LabeledContent("刊读 iOS", value: "0.1.1")
+                LabeledContent("刊读 iOS", value: "0.1.2")
                 NavigationLink("开源许可") {
                     ScrollView {
                         Text((Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt")
@@ -54,6 +61,11 @@ struct SettingsView: View {
         .navigationTitle("设置")
         .onAppear { if !loaded { draft = settings.config; loaded = true } }
         .onDisappear { job.cancel() }
+        .sheet(isPresented: $importingJSON) {
+            NavigationStack {
+                ConfigurationImportView { value in draft = value; notice = "JSON 配置已导入并保存。" }
+            }
+        }
     }
 }
 
