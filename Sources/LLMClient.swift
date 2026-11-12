@@ -16,12 +16,19 @@ struct StreamAccumulator {
     mutating func consume(_ packet: String, provider: Provider) throws {
         if packet == "[DONE]" { finished = true; return }
         guard let data = packet.data(using: .utf8),
-              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+              let value = try? JSONSerialization.jsonObject(with: data),
+              let object = value as? [String: Any] else {
+            throw ReaderError.message("模型响应中的 JSON 无法解析；这是接口响应问题，并非粘贴的配置 JSON 格式错误。")
+        }
         if let error = object["error"] as? [String: Any] {
             throw ReaderError.message("模型返回错误：\((error["message"] as? String ?? "未知错误").prefixText(400))")
         }
         if provider == .anthropic {
             let type = object["type"] as? String
+            if type == "content_block_start", let block = object["content_block"] as? [String: Any],
+               block["type"] as? String == "text", let initial = block["text"] as? String {
+                text += initial
+            }
             if let delta = object["delta"] as? [String: Any] {
                 if let content = delta["text"] as? String { text += content }
                 if let thinking = delta["thinking"] as? String { reasoningCount += thinking.count }
@@ -60,6 +67,7 @@ struct StreamAccumulator {
 
 actor LLMClient {
     static let shared = LLMClient()
+    static let connectionTestTokens = 2000
 
     static func request(config: LLMConfiguration, system: String, messages: [ChatMessage], tokens: Int) throws -> URLRequest {
         guard !config.apiKey.trimmed.isEmpty, !config.model.trimmed.isEmpty else {
@@ -80,19 +88,31 @@ actor LLMClient {
             request.setValue("Bearer " + config.apiKey.trimmed, forHTTPHeaderField: "Authorization")
             body["messages"] = [["role": "system", "content": system]] + conversation
             body["temperature"] = 0.3
-            let host = request.url?.host?.lowercased() ?? ""
-            if host == "api.deepseek.com" || config.model.lowercased().contains("deepseek") {
-                body["thinking"] = ["type": "disabled"]
-            }
+        }
+        let host = request.url?.host?.lowercased() ?? ""
+        if host == "api.deepseek.com" || config.model.lowercased().contains("deepseek") {
+            body["thinking"] = ["type": "disabled"]
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
 
     func chat(config: LLMConfiguration, system: String, messages: [ChatMessage], tokens: Int = 3500,
+              sessionConfiguration: URLSessionConfiguration? = nil,
               progress: @escaping @Sendable (GenerationProgress) async -> Void) async throws -> String {
+        do {
+            return try await receive(config: config, system: system, messages: messages, tokens: tokens,
+                                     sessionConfiguration: sessionConfiguration, progress: progress)
+        } catch is CancellationError { throw CancellationError() }
+        catch let error as URLError where error.code == .cancelled { throw error }
+        catch { throw ReaderError.message(LLMFailure.message(error, secret: config.apiKey.trimmed)) }
+    }
+
+    private func receive(config: LLMConfiguration, system: String, messages: [ChatMessage], tokens: Int,
+                         sessionConfiguration: URLSessionConfiguration?,
+                         progress: @escaping @Sendable (GenerationProgress) async -> Void) async throws -> String {
         let request = try Self.request(config: config, system: system, messages: messages, tokens: tokens)
-        let sessionConfig = URLSessionConfiguration.ephemeral
+        let sessionConfig = sessionConfiguration ?? URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 90
         sessionConfig.timeoutIntervalForResource = 300
         let session = URLSession(configuration: sessionConfig)
@@ -105,40 +125,23 @@ actor LLMClient {
             throw ReaderError.message("HTTP \(http.statusCode)：请检查 API 地址、密钥、配额及模型名称。")
         }
         var state = StreamAccumulator()
-        if http.value(forHTTPHeaderField: "Content-Type")?.lowercased().contains("text/event-stream") == true {
-            var event: [String] = []
-            var lastUpdate = Date.distantPast
-            var received = 0
-            for try await line in bytes.lines {
-                try Task.checkCancellation()
-                received += line.utf8.count
-                guard received < 8 * 1024 * 1024 else { throw ReaderError.message("模型响应过大。") }
-                if line.isEmpty {
-                    if !event.isEmpty {
-                        try state.consume(event.joined(separator: "\n"), provider: config.provider)
-                        event.removeAll(keepingCapacity: true)
-                    }
-                    if Date().timeIntervalSince(lastUpdate) > 0.15 {
-                        await progress(state.progress)
-                        lastUpdate = Date()
-                    }
-                    if state.finished { break }
-                } else if line.hasPrefix("data:") {
-                    var value = String(line.dropFirst(5))
-                    if value.hasPrefix(" ") { value.removeFirst() }
-                    event.append(value)
+        // Decode actual response bytes rather than trusting Content-Type. Some
+        // compatible gateways return SSE as JSON, or JSON as event-stream.
+        var decoder = LLMResponseDecoder()
+        var lastUpdate = Date.distantPast
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            if let packet = try decoder.consume(byte) {
+                try state.consume(packet, provider: config.provider)
+                if Date().timeIntervalSince(lastUpdate) > 0.15 {
+                    await progress(state.progress)
+                    lastUpdate = Date()
                 }
+                if state.finished { break }
             }
-            if !event.isEmpty { try state.consume(event.joined(separator: "\n"), provider: config.provider) }
-        } else {
-            // Some compatible gateways return normal JSON even when stream=true. Consume once.
-            var data = Data()
-            for try await byte in bytes {
-                try Task.checkCancellation()
-                guard data.count < 2 * 1024 * 1024 else { throw ReaderError.message("模型响应过大。") }
-                data.append(byte)
-            }
-            try state.consume(String(decoding: data, as: UTF8.self), provider: config.provider)
+        }
+        if !state.finished {
+            for packet in try decoder.finish() { try state.consume(packet, provider: config.provider) }
         }
         try Task.checkCancellation()
         await progress(state.progress)
@@ -178,7 +181,7 @@ final class GenerationJob: ObservableObject {
              completion: @escaping @MainActor (String) throws -> Void) {
         perform { job in
             let text = try await LLMClient.shared.chat(config: config, system: system, messages: messages, tokens: tokens) { value in
-                await job.report(value)
+                    await job.report(value)
             }
             try Task.checkCancellation()
             try completion(text)

@@ -40,13 +40,15 @@ struct SettingsView: View {
                     catch { notice = error.localizedDescription }
                 }
                 Button("测试连接") {
-                    job.run(config: draft, messages: [ChatMessage(role: "user", content: "请只回复：连接成功")], tokens: 64) { notice = $0 }
+                    notice = nil
+                    job.run(config: draft, system: "你是连通性测试助手。", messages: [ChatMessage(role: "user", content: "请只回复：连接成功")],
+                            tokens: LLMClient.connectionTestTokens) { notice = "连接成功：\($0.prefixText(100))" }
                 }.disabled(job.running)
                 JobProgressView(job: job)
                 if let notice { Text(notice).font(.callout).textSelection(.enabled) }
             }
             Section("关于") {
-                LabeledContent("刊读 iOS", value: "0.1.2")
+                LabeledContent("刊读 iOS", value: "0.1.3")
                 NavigationLink("开源许可") {
                     ScrollView {
                         Text((Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt")
