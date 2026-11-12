@@ -39,7 +39,7 @@ struct SettingsView: View {
                 if let notice { Text(notice).font(.callout).textSelection(.enabled) }
             }
             Section("关于") {
-                LabeledContent("刊读 iOS", value: "0.1.0")
+                LabeledContent("刊读 iOS", value: "0.1.1")
                 NavigationLink("开源许可") {
                     ScrollView {
                         Text((Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt")

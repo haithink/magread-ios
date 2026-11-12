@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum ReaderSheet: String, Identifiable {
-    case vocabulary, explain, chat, wordbook
+    case vocabulary, articleVocabulary, explain, chat, wordbook
     var id: String { rawValue }
 }
 
@@ -32,6 +32,9 @@ struct ArticleReaderView: View {
                                 Text(article.title).font(.system(.title, design: .serif, weight: .bold)).foregroundStyle(Color.ink)
                                 Text("\(article.wordCount) 词 · \(article.paragraphs.count) 段")
                                     .font(.caption).foregroundStyle(.secondary)
+                                Button { sheet = .articleVocabulary } label: {
+                                    Label("整篇生词表", systemImage: "character.book.closed")
+                                }.font(.subheadline).buttonStyle(.bordered)
                                 Divider().padding(.vertical, 6)
                             }
                             Text(highlighted(paragraph))
@@ -59,8 +62,11 @@ struct ArticleReaderView: View {
         .navigationTitle(article.title).navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { sheet = .articleVocabulary } label: { Image(systemName: "character.book.closed") }
+                    .accessibilityLabel("整篇生词表")
                 Button { sheet = .chat } label: { Image(systemName: "bubble.left.and.bubble.right") }.accessibilityLabel("文章问答")
                 Menu {
+                    Button("整篇生词表", systemImage: "character.book.closed") { sheet = .articleVocabulary }
                     Button("搜索正文", systemImage: "magnifyingglass") { searchVisible.toggle() }
                     Button("个人生词本", systemImage: "character.book.closed") { sheet = .wordbook }
                     ControlGroup {
@@ -89,6 +95,8 @@ struct ArticleReaderView: View {
                     switch kind {
                     case .vocabulary:
                         VocabularyView(book: book, article: article, paragraph: selectedParagraph)
+                    case .articleVocabulary:
+                        ArticleVocabularyView(book: book, article: article)
                     case .explain:
                         ConversationView(book: book, articleID: article.id,
                                          context: article.paragraphs[selectedParagraph],
@@ -145,7 +153,7 @@ struct VocabularyView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: SettingsStore
     @StateObject private var job = GenerationJob()
-    private var cacheKey: String { "\(settings.config.level):\(paragraph)" }
+    private var cacheKey: String { ArticleVocabulary.cacheKey(level: settings.config.level, paragraph: paragraph) }
     private var entries: [VocabularyEntry] { library.record(book, article.id).vocabulary[cacheKey] ?? [] }
     private var personal: [VocabularyEntry] {
         let text = article.paragraphs[paragraph].lowercased()
@@ -165,7 +173,7 @@ struct VocabularyView: View {
                 if entries.isEmpty && !job.running {
                     Text("暂无词条，可以生成或重新生成。").foregroundStyle(.secondary).padding(.vertical, 20)
                 }
-                ForEach(entries) { entry in VocabularyCard(entry: entry, source: article.title) }
+                ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in VocabularyCard(entry: entry, source: article.title) }
                 if !personal.isEmpty {
                     Text("个人生词本中的词").font(.headline).padding(.top)
                     ForEach(personal) { entry in VocabularyCard(entry: entry, source: article.title) }

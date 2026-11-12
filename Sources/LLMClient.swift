@@ -176,19 +176,27 @@ final class GenerationJob: ObservableObject {
 
     func run(config: LLMConfiguration, system: String = Prompts.tutor, messages: [ChatMessage], tokens: Int = 3500,
              completion: @escaping @MainActor (String) throws -> Void) {
+        perform { job in
+            let text = try await LLMClient.shared.chat(config: config, system: system, messages: messages, tokens: tokens) { value in
+                await job.report(value)
+            }
+            try Task.checkCancellation()
+            try completion(text)
+        }
+    }
+
+    func report(_ value: GenerationProgress) { progress = value }
+
+    func perform(_ operation: @escaping @MainActor (GenerationJob) async throws -> Void) {
         guard !running else { return }
         running = true
         started = Date()
         error = nil
         progress = GenerationProgress()
         task = Task {
-            defer { running = false }
+            defer { running = false; task = nil }
             do {
-                let text = try await LLMClient.shared.chat(config: config, system: system, messages: messages, tokens: tokens) { [weak self] value in
-                    await MainActor.run { self?.progress = value }
-                }
-                try Task.checkCancellation()
-                try completion(text)
+                try await operation(self)
             } catch is CancellationError { }
             catch let failure as URLError where failure.code == .cancelled { }
             catch { self.error = error.localizedDescription }
