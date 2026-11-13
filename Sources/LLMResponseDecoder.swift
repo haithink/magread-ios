@@ -53,6 +53,9 @@ struct LLMResponseDecoder {
             json = Data((value + "\n").utf8)
             return nil
         }
+        // Compatible gateways may place whitespace-only lines before a JSON body.
+        // Ignore these only while detecting the format; SSE delimiters stay exact.
+        if mode == .undecided && value.trimmed.isEmpty { return nil }
         if value.isEmpty {
             guard !event.isEmpty else { return nil }
             let packet = event.joined(separator: "\n")
